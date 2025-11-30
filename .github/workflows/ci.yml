@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          gcc \
+          g++ \
+          make \
+          cmake \
+          libelf-dev \
+          llvm \
+          clang \
+          libxml2 \
+          libxml2-dev \
+          libzstd1 \
+          git \
+          libgtest-dev \
+          apt-transport-https \
+          dirmngr \
+          googletest \
+          google-mock \
+          libgmock-dev \
+          libjson-glib-dev \
+          libssl-dev
+        
+    - name: Install .NET SDK and dotnet-t4
+      run: |
+        wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install -y dotnet-sdk-8.0
+        dotnet tool install --global dotnet-t4 --version 2.3.1
+        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+        
+    - name: Install SysinternalsEBPF library
+      run: |
+        # For CI purposes, we'll need to install this separately
+        # This is a placeholder - in practice, you'd install from packages or build from source
+        echo "Note: SysinternalsEBPF library would need to be installed here"
+        echo "This step would be specific to the CI environment setup"
+        
+    - name: Configure CMake (${{ matrix.build_type }})
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+        
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+        
+    - name: Run Tests
+      run: |
+        cd build
+        # Only run if the test binary exists and SysinternalsEBPF is available
+        if [ -f "./sysmonUnitTests" ] && [ -f "/usr/lib/x86_64-linux-gnu/libsysinternalsEBPF.so" ]; then
+          ./sysmonUnitTests --gtest_output=xml:test_results.xml
+        else
+          echo "Skipping tests - missing dependencies in CI environment"
+          echo "SysinternalsEBPF library needs to be set up for full CI testing"
+        fi
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.build_type }}
+        path: build/test_results.xml
+        
+  build-packages:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          gcc \
+          g++ \
+          make \
+          cmake \
+          libelf-dev \
+          llvm \
+          clang \
+          libxml2 \
+          libxml2-dev \
+          libzstd1 \
+          git \
+          libgtest-dev \
+          apt-transport-https \
+          dirmngr \
+          googletest \
+          google-mock \
+          libgmock-dev \
+          libjson-glib-dev \
+          libssl-dev \
+          rpm
+          
+    - name: Install .NET SDK and dotnet-t4
+      run: |
+        wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+        sudo dpkg -i packages-microsoft-prod.deb
+        sudo apt-get update
+        sudo apt-get install -y dotnet-sdk-8.0
+        dotnet tool install --global dotnet-t4 --version 2.3.1
+        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+        
+    - name: Build Release
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        
+    - name: Create DEB package
+      run: |
+        cd build
+        # Note: This requires SysinternalsEBPF to be available
+        # make deb
+        echo "DEB package creation would happen here with proper dependencies"
+        
+    - name: Create RPM package  
+      run: |
+        cd build
+        # Note: This requires SysinternalsEBPF to be available
+        # make rpm
+        echo "RPM package creation would happen here with proper dependencies"
+        
+    - name: Upload packages
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: packages
+        path: |
+          build/*.deb
+          build/*.rpm

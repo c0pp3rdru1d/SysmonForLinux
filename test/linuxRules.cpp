@@ -259,10 +259,14 @@ TEST( Process, ProcessName )
         // that the analyzer is complaining about and then ASSERT.
         if (child < 0)
         {
-            free(cmdline);
-            free(cmdline_copy);
-            cmdline = NULL;
-            cmdline_copy = NULL;
+            if (cmdline != NULL) {
+                free(cmdline);
+                cmdline = NULL;
+            }
+            if (cmdline_copy != NULL) {
+                free(cmdline_copy);
+                cmdline_copy = NULL;
+            }
             ASSERT_TRUE(false);
         }
 
@@ -278,9 +282,11 @@ TEST( Process, ProcessName )
 
         if (cmdline != NULL) {
             free(cmdline);
+            cmdline = NULL;
         }
         if (cmdline_copy != NULL) {
             free(cmdline_copy);
+            cmdline_copy = NULL;
         }
     }
 }
@@ -320,6 +326,7 @@ TEST( Process, ProcessInfo )
     const pid_t myPid = getpid();
     ULONG sessionId = 0;
     ULONGLONG processKeys[10];
+    pid_t children[10];  // Track child PIDs for cleanup
     char mysleep[] = "./mysleep";
     char* args[2] = { mysleep, NULL };
 
@@ -331,6 +338,7 @@ TEST( Process, ProcessInfo )
         if (child == 0) {
             execve( mysleep, args, NULL );
         }
+        children[i] = child;  // Store child PID for cleanup
 
         gettimeofday( &tv, NULL );
         timeinseconds = tv.tv_sec + (tv.tv_usec > 500000 ? 1 : 0);
@@ -345,6 +353,13 @@ TEST( Process, ProcessInfo )
         for (unsigned int j=0; j<i; j++) {
             EXPECT_TRUE( processKeys[i] != processKeys[j] );
         }
+    }
+    
+    // Clean up all child processes
+    for (unsigned int i=0; i<10; i++) {
+        kill(children[i], SIGTERM);
+        int status;
+        waitpid(children[i], &status, 0);  // Wait for child to exit
     }
 }
 
